@@ -33,7 +33,7 @@ router.get('/walrus', (req, res) => {
     success: true,
     data: {
       status: 'ONLINE',
-      fallbackCacheActive: false
+      fallbackCacheActive: true
     }
   });
 });

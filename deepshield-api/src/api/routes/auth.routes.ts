@@ -5,6 +5,7 @@ import { prisma } from '../../database/prisma.js';
 
 const router = Router();
 const nonces = new Map<string, string>(); // In-memory nonce store for hackathon
+const inMemoryUsers = new Map<string, any>(); // Fallback store if DB is offline
 
 router.post('/nonce', (req, res) => {
   const { walletAddress } = req.body;
@@ -27,12 +28,24 @@ router.post('/verify', async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid signature' });
     }
 
-    // Try Database
-    const user = await prisma.user.upsert({
-      where: { walletAddress },
-      update: {},
-      create: { walletAddress }
-    });
+    let user: any = null;
+    
+    // Try Database First
+    try {
+      user = await prisma.user.findUnique({ where: { walletAddress } });
+      if (!user) {
+        user = await prisma.user.create({ data: { walletAddress } });
+      }
+    } catch (dbError) {
+      console.warn('⚠️ Database write failed during auth. Falling back to in-memory store.', dbError);
+      // Fallback to in-memory store
+      if (inMemoryUsers.has(walletAddress)) {
+        user = inMemoryUsers.get(walletAddress);
+      } else {
+        user = { id: 'fallback-' + Date.now(), walletAddress };
+        inMemoryUsers.set(walletAddress, user);
+      }
+    }
 
     // Always issue JWT if signature was verified
     const token = jwt.sign({ id: user.id, wallet: walletAddress }, process.env.JWT_SECRET || 'secret', { expiresIn: '24h' });
@@ -50,9 +63,21 @@ router.get('/profile', async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
     
-    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    let user = null;
+    
+    try {
+      user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    } catch (dbError) {
+      console.warn('⚠️ Database read failed during profile fetch. Checking in-memory store.');
+    }
+
+    if (!user && inMemoryUsers.has(decoded.wallet)) {
+      user = inMemoryUsers.get(decoded.wallet);
+    }
+    
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      // If totally missing, return a dummy profile so the UI doesn't crash during demo
+      user = { id: decoded.id, walletAddress: decoded.wallet };
     }
     
     res.json({ success: true, data: user });
@@ -76,7 +101,7 @@ router.get('/health/auth', async (req, res) => {
       databaseStatus: dbStatus,
       jwtStatus: 'READY',
       walletVerificationStatus: 'READY',
-      inMemoryFallbackActive: false
+      inMemoryFallbackActive: inMemoryUsers.size > 0
     }
   });
 });

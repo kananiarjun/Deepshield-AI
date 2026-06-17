@@ -2,12 +2,11 @@ import { Router } from 'express';
 import { WalrusService } from '../../walrus/walrus.service.js';
 import { MoveService } from '../../sui/move.service.js';
 import { VerificationService } from '../../verification/verification.service.js';
-import { prisma } from '../../database/prisma.js';
 import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 import axios from 'axios';
 
 const router = Router();
-const client = new SuiClient({ url: process.env.SUI_RPC_URL || 'https://fullnode.testnet.sui.io:443' });
+const client = new SuiClient({ url: process.env.DEEPBOOK_RPC_URL || getFullnodeUrl('mainnet') });
 
 router.post('/analyze', async (req, res, next) => {
   try {
@@ -28,7 +27,7 @@ router.post('/analyze', async (req, res, next) => {
 
         let liveSuiPrice = 2.0;
         try {
-          const priceRes = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=SUIUSDT', { timeout: 3000 });
+          const priceRes = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=SUIUSDT');
           liveSuiPrice = parseFloat(priceRes.data.price);
         } catch(e){}
 
@@ -70,16 +69,6 @@ router.post('/analyze', async (req, res, next) => {
       'Medium',
       walrusResult.blobId
     );
-
-    // 3.5 Store in SQLite DB
-    await prisma.portfolioAnalysis.create({
-      data: {
-        walletAddress: address || '0xunknown',
-        portfolioScore: 85,
-        riskLevel: 'Medium',
-        recommendation: 'Portfolio is healthy but exposure to volatile assets is slightly high. Recommend enabling protection routing for CETUS and DEEP trades.'
-      }
-    });
 
     // 4. Verify
     const verification = await VerificationService.verifyPortfolioAnalysis(

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Shield, Bell, User, ChevronDown, Activity, LogOut, Settings, Menu } from "lucide-react";
+import { Shield, Bell, User, ChevronDown, Activity, LogOut, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/store/useStore";
@@ -25,22 +25,13 @@ const navigation = [
 
 export function Navbar() {
   const pathname = usePathname();
-  const { walletConnected, walletAddress, setWalletModalOpen, disconnectWallet, portfolioValue, isSidebarOpen, setSidebarOpen } = useStore();
+  const { walletConnected, walletAddress, setWalletModalOpen, disconnectWallet, suiMainnetStatus, deepBookStatus, portfolioValue } = useStore();
 
   return (
     <header className="h-16 border-b border-border bg-card flex items-center justify-between px-6 sticky top-0 z-50">
       
       {/* Left: Logo */}
-      <div className="flex items-center gap-2 w-64">
-        {pathname !== "/" && (
-          <button 
-            onClick={() => setSidebarOpen(!isSidebarOpen)}
-            className="p-1.5 hover:bg-secondary rounded-lg transition-colors border border-border mr-1"
-            aria-label="Toggle Sidebar Menu"
-          >
-            <Menu className="w-5 h-5 text-foreground" />
-          </button>
-        )}
+      <div className="flex items-center gap-3 w-64">
         <Link href="/" className="flex items-center gap-3">
           <div className="w-8 h-8 flex items-center justify-center bg-primary/10 text-primary rounded-lg border border-primary/20">
             <Shield className="w-5 h-5" />
@@ -86,6 +77,19 @@ export function Navbar() {
               Start Demo
             </Button>
           </Link>
+        </div>
+        
+        {/* Live Sui Network Status */}
+        <div className="hidden lg:flex items-center gap-3 px-4 py-1.5 rounded-full bg-secondary text-[11px] font-bold text-muted-foreground border border-border">
+          <div className="flex items-center gap-1.5">
+            <div className={`w-2 h-2 rounded-full ${suiMainnetStatus === 'Operational' ? 'bg-success' : 'bg-warning'}`}></div>
+            Sui Mainnet
+          </div>
+          <div className="w-px h-3 bg-border"></div>
+          <div className="flex items-center gap-1.5">
+            <div className={`w-2 h-2 rounded-full ${deepBookStatus === 'Active' ? 'bg-primary animate-pulse' : 'bg-muted'}`}></div>
+            DeepBook
+          </div>
         </div>
         
         <button className="relative p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors hidden md:block">

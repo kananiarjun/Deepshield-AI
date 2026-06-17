@@ -1,37 +1,29 @@
 import { Router } from 'express';
-import { prisma } from '../../database/prisma.js';
+import { replayTrades } from '../../utils/mockData.js';
+import { WalrusService } from '../../walrus/walrus.service.js';
+import { MoveService } from '../../sui/move.service.js';
 import { VerificationService } from '../../verification/verification.service.js';
 
 const router = Router();
 
 router.get('/history', async (req, res, next) => {
   try {
-    const replays = await prisma.replayEvent.findMany({
-      include: { trade: true },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    const dataWithVerification = await Promise.all(replays.map(async (event) => {
-      const trade = event.trade;
-      const blobId = 'fallback_blob_' + trade.id;
-      const objectId = trade.txHash || '0x0288094852c5254052abd0c431915f883eee0c8372807f099506864749d30c6d';
-      const txHash = trade.txHash || '0xunknown';
+    // In a real app we would fetch the list of protection proofs from Sui RPC or our indexer
+    // For the hackathon, we take the mock replays and generate verification data on the fly
+    const dataWithVerification = await Promise.all(replayTrades.map(async (trade) => {
+      // Mock upload/reference generation for existing mock data
+      const mockBlobId = 'mock_blob_' + Math.random().toString(36).substring(2) + Date.now();
+      const mockObjectId = `0x${Math.random().toString(16).substring(2, 18)}...${Math.random().toString(16).substring(2, 18)}`;
+      const mockTxHash = `${Math.random().toString(36).substring(2, 15)}...`;
 
       const verification = await VerificationService.verifyProtectionProof(
-        objectId,
-        blobId,
-        txHash
+        mockObjectId,
+        mockBlobId,
+        mockTxHash
       );
 
       return {
-        id: trade.id,
-        pair: trade.tokenPair,
-        originalRisk: trade.riskScore,
-        predictedLoss: `$${event.estimatedLoss.toFixed(2)}`,
-        actualExecution: event.protectionMethod,
-        moneySaved: `$${event.savedAmount.toFixed(2)}`,
-        aiRecommendation: trade.protectionStrategy,
-        timestamp: event.createdAt.toLocaleString(),
+        ...trade,
         verification
       };
     }));
@@ -42,35 +34,9 @@ router.get('/history', async (req, res, next) => {
   }
 });
 
-router.get('/:tradeId', async (req, res, next) => {
-  try {
-    const trade = await prisma.protectedTrade.findUnique({
-      where: { id: req.params.tradeId },
-      include: { replayEvents: true }
-    });
-
-    if (!trade) {
-      return res.status(404).json({ success: false, message: 'Trade not found' });
-    }
-
-    const replayEvent = trade.replayEvents[0] || { estimatedLoss: 0, savedAmount: 0, protectionMethod: trade.protectionStrategy };
-
-    res.json({
-      success: true,
-      data: {
-        id: trade.id,
-        pair: trade.tokenPair,
-        originalRisk: trade.riskScore,
-        predictedLoss: `$${replayEvent.estimatedLoss.toFixed(2)}`,
-        actualExecution: replayEvent.protectionMethod,
-        moneySaved: `$${replayEvent.savedAmount.toFixed(2)}`,
-        aiRecommendation: trade.protectionStrategy,
-        timestamp: trade.createdAt.toLocaleString()
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
+router.get('/:tradeId', (req, res) => {
+  const trade = replayTrades.find(t => t.id === req.params.tradeId) || replayTrades[0];
+  res.json({ success: true, data: trade });
 });
 
 export default router;

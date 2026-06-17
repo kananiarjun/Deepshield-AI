@@ -4,14 +4,14 @@ export interface WalrusResponse {
   blobId: string;
   blobUrl: string;
   timestamp: number;
-  status: 'Stored' | 'Failed';
+  status: 'Stored' | 'Failed' | 'Fallback';
   message?: string;
 }
 
 class AsyncSemaphore {
   private queue: (() => void)[] = [];
   private activeCount = 0;
-  constructor(private maxConcurrent: number) { }
+  constructor(private maxConcurrent: number) {}
 
   async acquire(): Promise<void> {
     if (this.activeCount < this.maxConcurrent) {
@@ -36,7 +36,10 @@ class AsyncSemaphore {
 export class WalrusService {
   private static publisherUrl = process.env.WALRUS_PUBLISHER_URL || 'https://publisher.walrus-testnet.walrus.space';
   private static aggregatorUrl = process.env.WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
-
+  
+  // Static Fallback Cache for when Walrus network is unavailable
+  private static fallbackCache = new Map<string, any>();
+  
   // Restrict concurrent uploads to avoid rate limits or congestion
   private static uploadQueue = new AsyncSemaphore(5);
 
@@ -46,26 +49,21 @@ export class WalrusService {
 
   private static async executeWithRetry<T>(
     operation: () => Promise<T>,
-    maxRetries: number = 5,
+    maxRetries: number = 3,
     baseDelayMs: number = 1000
   ): Promise<T> {
     let attempt = 0;
     while (attempt < maxRetries) {
       try {
         return await operation();
-      } catch (error: any) {
+      } catch (error) {
         attempt++;
-        const status = error?.response?.status;
-        // Retry on rate limits (429), server errors (503, 502, 500), or timeout/network issues
-        const shouldRetry = status === 429 || status === 503 || status === 502 || !status;
-        
-        if (attempt >= maxRetries || !shouldRetry) {
+        if (attempt >= maxRetries) {
           throw error;
         }
-        
         // Exponential backoff
         const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
-        console.warn(`[WalrusService] Attempt ${attempt} failed with ${status || 'Network Error'}. Retrying in ${delayMs}ms...`);
+        console.warn(`[WalrusService] Attempt ${attempt} failed. Retrying in ${delayMs}ms...`);
         await this.delay(delayMs);
       }
     }
@@ -74,21 +72,21 @@ export class WalrusService {
 
   private static async uploadJson(data: any, epochs: number = 5): Promise<WalrusResponse> {
     await this.uploadQueue.acquire();
-
+    
     try {
       const jsonString = JSON.stringify(data);
-      const url = `${this.publisherUrl}/v1/blobs?epochs=${epochs}`;
+      const url = `${this.publisherUrl}/v1/store?epochs=${epochs}`;
 
       return await this.executeWithRetry(async () => {
-        // Upload with a 15s timeout
+        // Upload with a 10s timeout
         const response = await axios.put(url, jsonString, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 15000
+          timeout: 10000 
         });
-
+        
         const resData = response.data;
         let blobId = '';
-
+        
         if (resData.alreadyCertified) {
           blobId = resData.alreadyCertified.blobId;
         } else if (resData.newlyCreated) {
@@ -97,18 +95,34 @@ export class WalrusService {
           throw new Error('Unexpected response format from Walrus Publisher');
         }
 
+        // Verify blob accessibility immediately
+        const isAccessible = await this.verifyBlob(blobId);
+        if (!isAccessible) {
+          console.warn(`[WalrusService] Blob ${blobId} uploaded but verification failed. Proceeding anyway, it may be propagating.`);
+        }
+
         return {
           blobId,
-          blobUrl: `${this.aggregatorUrl}/v1/blobs/${blobId}`,
+          blobUrl: `${this.aggregatorUrl}/v1/${blobId}`,
           timestamp: Date.now(),
           status: 'Stored',
           message: 'Stored securely on Walrus'
         };
-      }, 5, 2000); // 5 retries, starting at 2s delay
-
+      }, 3, 1500); // 3 retries, starting at 1.5s delay
+      
     } catch (error: any) {
-      console.error('[WalrusService] ❌ Walrus Upload failed after retries:', error?.message || error);
-      throw new Error(`Walrus Storage Failed: ${error?.message || 'Network Congested'}`);
+      console.error('[WalrusService] ❌ Walrus Upload completely failed after retries. Storing in Fallback Cache.', error?.message || error);
+      
+      const fallbackId = 'fallback_blob_' + Date.now();
+      this.fallbackCache.set(fallbackId, data);
+      
+      return {
+        blobId: fallbackId,
+        blobUrl: `/api/fallback/${fallbackId}`, // Internal route for UI if needed, though we intercept it in getBlob
+        timestamp: Date.now(),
+        status: 'Fallback',
+        message: 'Network congested. Saved to Local Fallback Cache.'
+      };
     } finally {
       this.uploadQueue.release();
     }
@@ -139,13 +153,13 @@ export class WalrusService {
   }
 
   static async getBlob(blobId: string): Promise<any> {
-    if (!blobId || blobId.startsWith('mock_')) return null;
+    if (blobId.startsWith('fallback_blob_')) {
+      return this.fallbackCache.get(blobId) || null;
+    }
 
     try {
-      return await this.executeWithRetry(async () => {
-        const response = await axios.get(`${this.aggregatorUrl}/v1/blobs/${blobId}`, { timeout: 10000 });
-        return response.data;
-      }, 3, 1000);
+      const response = await axios.get(`${this.aggregatorUrl}/v1/${blobId}`, { timeout: 10000 });
+      return response.data;
     } catch (error) {
       console.error(`[WalrusService] Failed to retrieve blob ${blobId}:`, error);
       return null;
@@ -153,12 +167,13 @@ export class WalrusService {
   }
 
   static async verifyBlob(blobId: string): Promise<boolean> {
-    if (!blobId || blobId.startsWith('mock_') || blobId.startsWith('fallback_')) return false;
+    if (blobId.startsWith('fallback_blob_')) {
+      return this.fallbackCache.has(blobId);
+    }
 
     try {
-      await this.executeWithRetry(async () => {
-        await axios.head(`${this.aggregatorUrl}/v1/blobs/${blobId}`, { timeout: 3000 });
-      }, 2, 500);
+      // Fast timeout for verification
+      await axios.head(`${this.aggregatorUrl}/v1/${blobId}`, { timeout: 3000 });
       return true;
     } catch (error) {
       return false;

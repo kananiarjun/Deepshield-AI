@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { useCurrentAccount, useCurrentWallet } from '@mysten/dapp-kit';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useStore } from '@/store/useStore';
-import { apiClient } from '@/lib/api';
 
 export function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const currentAccount = useCurrentAccount();
-  const { connectionStatus } = useCurrentWallet();
   const { walletAddress, jwtToken, connectWallet, disconnectWallet } = useStore();
   const [isRestoring, setIsRestoring] = useState(true);
 
@@ -32,57 +30,31 @@ export function AuthBootstrap({ children }: { children: React.ReactNode }) {
       }
 
       if (persistedJwt && persistedAddress) {
+        // Assume valid for now, check dapp-kit next
         connectWallet(persistedAddress, persistedJwt);
-        // Fetch fresh stats in background
-        apiClient.get('/auth/profile', {
-          headers: { Authorization: `Bearer ${persistedJwt}` }
-        }).then((user: any) => {
-          if (user) {
-            connectWallet(persistedAddress, persistedJwt, user);
-          }
-        }).catch(err => {
-          console.warn("Failed to fetch fresh user profile:", err);
-        });
       } else {
         disconnectWallet();
       }
-
-      // If there is an auto-connecting wallet in dapp-kit, wait for it
-      const hasAutoConnect = localStorage.getItem('sui-dapp-kit:connected-wallet');
-      if (hasAutoConnect && connectionStatus === 'connecting') {
-        console.log("Waiting for autoConnect to resolve...");
-        return; // will resolve in the next useEffect
-      }
-
       setIsRestoring(false);
     };
 
     hydrate();
   }, []);
 
-  // Handle auto-connect resolution
-  useEffect(() => {
-    if (isRestoring && localStorage.getItem('sui-dapp-kit:connected-wallet')) {
-      if (connectionStatus === 'connected' || connectionStatus === 'disconnected') {
-        setIsRestoring(false);
-      }
-    }
-  }, [connectionStatus, isRestoring]);
-
   // Sync dapp-kit account changes after hydration
   useEffect(() => {
     if (!isRestoring) {
-      if (connectionStatus === 'disconnected' && walletAddress) {
+      if (!currentAccount && walletAddress) {
+        // Wallet was removed or disconnected from extension
         console.warn("Wallet extension disconnected. Clearing session.");
         disconnectWallet();
-      } else if (connectionStatus === 'connected' && currentAccount) {
-        if (walletAddress && currentAccount.address !== walletAddress) {
-          console.warn("Wallet address changed in extension. Clearing session.");
-          disconnectWallet();
-        }
+      } else if (currentAccount && walletAddress && currentAccount.address !== walletAddress) {
+         // Wallet changed, require re-auth
+         console.warn("Wallet address changed in extension. Clearing session.");
+         disconnectWallet();
       }
     }
-  }, [connectionStatus, currentAccount, walletAddress, isRestoring]);
+  }, [currentAccount, walletAddress, isRestoring]);
 
   if (isRestoring) {
     return (
@@ -96,4 +68,3 @@ export function AuthBootstrap({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>;
 }
-

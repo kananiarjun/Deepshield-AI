@@ -14,7 +14,7 @@ export default function ReplayPage() {
   const [selectedReplay, setSelectedReplay] = useState<any>(null);
   const { history } = useReplay();
   const { data: apiData, isLoading } = history;
-  const replays = Array.isArray(apiData) ? apiData : (apiData as any)?.data || [];
+  const replays = (apiData as any)?.data || [];
 
   return (
     <div className="flex flex-col gap-8 max-w-5xl mx-auto w-full pb-10">

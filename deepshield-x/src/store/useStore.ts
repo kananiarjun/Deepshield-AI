@@ -11,12 +11,10 @@ interface AppState {
   protectedTrades: number;
   estimatedSavings: string;
   isWalletModalOpen: boolean;
-  isSidebarOpen: boolean;
   
   // Wallet Actions
   setWalletModalOpen: (isOpen: boolean) => void;
-  setSidebarOpen: (isOpen: boolean) => void;
-  connectWallet: (address: string, token?: string, user?: any) => void;
+  connectWallet: (address: string, token?: string) => void;
   disconnectWallet: () => void;
 
   // Network State
@@ -42,20 +40,18 @@ export const useStore = create<AppState>()(
       protectedTrades: 0,
       estimatedSavings: "$0.00",
       isWalletModalOpen: false,
-      isSidebarOpen: false,
       
       setWalletModalOpen: (isOpen: boolean) => set({ isWalletModalOpen: isOpen }),
-      setSidebarOpen: (isOpen: boolean) => set({ isSidebarOpen: isOpen }),
       
-      connectWallet: (address: string, token?: string, user?: any) => {
+      connectWallet: (address: string, token?: string) => {
         set({ 
           walletConnected: true, 
           walletAddress: address, 
           jwtToken: token || null,
-          portfolioValue: user ? `$${Number(user.totalSavings || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "$0.00",
-          protectionScore: user ? user.protectionScore : 100,
-          protectedTrades: user ? user.totalProtectedTrades : 0,
-          estimatedSavings: user ? `$${Number(user.totalSavings || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "$0.00",
+          portfolioValue: "$12,450.00",
+          protectionScore: 945,
+          protectedTrades: 312,
+          estimatedSavings: "$45,200",
           isWalletModalOpen: false
         });
       },

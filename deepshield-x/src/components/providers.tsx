@@ -9,17 +9,8 @@ import { AuthBootstrap } from './auth-bootstrap';
 if (typeof window !== 'undefined') {
   const originalError = console.error;
   console.error = (...args: any[]) => {
-    const msg = args
-      .map((arg) => {
-        if (typeof arg === 'string') return arg;
-        if (arg && typeof arg === 'object') {
-          return arg.message || arg.stack || '';
-        }
-        return '';
-      })
-      .join(' ');
+    const msg = typeof args[0] === 'string' ? args[0] : '';
     if (
-      msg.includes('dApp.connect') ||
       msg.includes('dApp.signPersonalMessage') ||
       msg.includes('dApp.signAndExecuteTransactionBlock') ||
       msg.includes('dapp-interface.js') ||
@@ -39,14 +30,13 @@ if (typeof window !== 'undefined') {
 const queryClient = new QueryClient();
 
 const { networkConfig } = createNetworkConfig({
-  testnet: { url: 'https://fullnode.testnet.sui.io:443', network: 'testnet' as any },
   mainnet: { url: 'https://fullnode.mainnet.sui.io:443', network: 'mainnet' as any },
 });
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <SuiClientProvider networks={networkConfig} defaultNetwork="testnet">
+      <SuiClientProvider networks={networkConfig} defaultNetwork="mainnet">
         <WalletProvider autoConnect>
           <AuthBootstrap>
             {children}

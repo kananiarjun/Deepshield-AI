@@ -9,7 +9,6 @@ import { VerificationStatusBadge } from '@/components/verification/VerificationS
 export default function VerificationCenterPage() {
   const { history: historyQuery } = useReplay();
   const { data: history, isLoading } = historyQuery;
-  const records = Array.isArray(history) ? history : (history as any)?.data || [];
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6 pb-24">
@@ -40,8 +39,8 @@ export default function VerificationCenterPage() {
               <div className="h-32 bg-gray-800 rounded-lg"></div>
               <div className="h-32 bg-gray-800 rounded-lg"></div>
             </div>
-          ) : records && records.length > 0 ? (
-            records.map((record: any, idx: number) => (
+          ) : history && history.length > 0 ? (
+            history.map((record: any, idx: number) => (
               <div key={record.id || idx} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-lg hover:border-gray-600 transition-colors">
                 <div className="p-6">
                   <div className="flex justify-between items-start mb-4">
@@ -51,10 +50,10 @@ export default function VerificationCenterPage() {
                       </div>
                       <div>
                         <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                          {record.pair || 'Unknown'} Protection Record
+                          {record.token || 'Unknown'} Protection Record
                         </h3>
                         <p className="text-sm text-gray-400">
-                          {record.actualExecution} • Saved {record.moneySaved}
+                          {record.action} • Saved {record.saved}
                         </p>
                       </div>
                     </div>

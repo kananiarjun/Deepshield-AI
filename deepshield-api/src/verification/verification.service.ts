@@ -34,7 +34,7 @@ export class VerificationService {
 
     const walrusUrl = blobId.startsWith('fallback_blob_') 
       ? `local-cache://${blobId}`
-      : `${process.env.WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space'}/v1/blobs/${blobId}`;
+      : `${process.env.WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space'}/v1/${blobId}`;
 
     return {
       verified: isBlobValid && isObjectValid,
